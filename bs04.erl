@@ -63,6 +63,9 @@ decode(<<"f", Rest/binary>>, [esc | St], [H | T]) ->
     decode(Rest, St, [<<H/binary, "\f">> | T]);
 decode(<<"\"", Rest/binary>>, [esc | St], [H | T]) ->
     decode(Rest, St, [<<H/binary, "\"">> | T]);
+decode(<<"u", A0, A1, A2, A3, Rest/binary>>, [esc | St], [H | T]) ->
+    S = unicode_seq(A0, A1, A2, A3),
+    decode(Rest, St, [<<H/binary, S/utf16>> | T]);
 %% inside string context - general characters
 decode(<<A/utf8, Rest/binary>>, [str | _] = Stack, [H | T]) ->
     decode(Rest, Stack, [<<H/binary, A/utf8>> | T]);
@@ -213,6 +216,19 @@ decode(Bin, Acc1, [obj, elem | St], Acc) ->
 decode(Bin, Acc1, [obj, val | St], Acc) ->
     decode(Bin, [val | St], [Acc1 | Acc]).
 
+unicode_seq(A0, A1, A2, A3) ->
+    hex_to_int(A3) bor
+    (hex_to_int(A2) bsl 4) bor
+    (hex_to_int(A1) bsl 8) bor
+    (hex_to_int(A0) bsl 12).
+
+hex_to_int(A) when A >= $0, A =< $9 -> 
+    A - $0;
+hex_to_int(A) when A >= $a, A =< $f -> 
+    A - $a + 10;
+hex_to_int(A) when A >= $A, A =< $F -> 
+    A - $A + 10.
+
 list_to_map([]) -> 
     [];
 list_to_map([{K, V} | T]) ->
@@ -250,6 +266,7 @@ test() ->
 [1, 2, 3] = bs04:decode(<<"[1, 2, 3]">>, proplist),
 [true, false, null] = bs04:decode(<<"[true, false, null]">>, proplist),
 [<<"String value">>] = bs04:decode(<<"[\"String value\"]">>, proplist),
+[<<"⃲"/utf16>>] = bs04:decode(<<"[\"\\u20f2\"]">>, proplist),
 [<<"\n\r\t\b\f\\/\"">>] = bs04:decode(<<"[\"\\n\\r\\t\\b\\f\\\\\\/\\\"\"]">>, proplist),
 [{<<"key">>, []}] = bs04:decode(<<"{\"key\": []}">>, proplist),
 [{<<"key">>, []}] = bs04:decode(<<"{\"key\": []}">>, proplist),
